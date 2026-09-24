@@ -1,0 +1,8 @@
+<!doctype html>
+<html><head><meta charset="utf-8"><script>
+(function(){
+  var p=location.pathname, q=location.search, h=location.hash;
+  sessionStorage.setItem("spa-path", p+q+h);
+  location.replace(location.origin + "/" + "?spa=1");
+})();
+</script></head><body></body></html>
