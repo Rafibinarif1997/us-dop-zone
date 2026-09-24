@@ -1,0 +1,12 @@
+<!doctype html>
+<html lang="en">
+<head><meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1"><title>AIRDROPX</title>
+<script>
+(function(){
+  var path=location.pathname+location.search+location.hash;
+  try{sessionStorage.setItem("airdropx-route",path)}catch(e){}
+  // Return to the deployed site root. app.js restores the requested clean URL.
+  location.replace(location.origin+"/?airdropx_route=1");
+})();
+</script></head>
+<body>Loading AIRDROPX…</body></html>
