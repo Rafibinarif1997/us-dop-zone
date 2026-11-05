@@ -171,7 +171,7 @@ async function handleMessage(message: TgMessage) {
   }
   if (ADMIN_IDS.includes(String(user.id)) && text.startsWith("/mission_add ")) {
     const parts = text.slice(12).split("|").map((v) => v.trim());
-    if (parts.length !== 5 || !parts[0] || !parts[1] || !parts[2] || !/^\\d+$/.test(parts[3])) {
+    if (parts.length !== 5 || !parts[0] || !parts[1] || !parts[2] || !/^\d+$/.test(parts[3])) {
       return say(message.chat.id, "Format:\\n/mission_add Title | Description | Category | Points | URL\\nUse - for no URL.");
     }
     const { data, error } = await db.from("bot_missions").insert({
@@ -183,7 +183,7 @@ async function handleMessage(message: TgMessage) {
     return say(message.chat.id, "✅ Mission created. ID: <code>" + data.id + "</code>");
   }
   if (ADMIN_IDS.includes(String(user.id)) && (text.startsWith("/mission_pause ") || text.startsWith("/mission_resume ") || text.startsWith("/mission_delete "))) {
-    const [command, id] = text.split(/\\s+/);
+    const [command, id] = text.split(/\s+/);
     const action = command.replace("/mission_", "");
     if (!id || !/^[0-9a-f-]{36}$/i.test(id)) return say(message.chat.id, "Usage: /mission_pause UUID, /mission_resume UUID, or /mission_delete UUID");
     if (action === "delete") {
