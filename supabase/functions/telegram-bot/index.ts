@@ -182,11 +182,10 @@ async function handleMessage(message: TgMessage) {
     if (error) return say(message.chat.id, "Could not create mission: " + escapeHtml(error.message));
     return say(message.chat.id, "✅ Mission created. ID: <code>" + data.id + "</code>");
   }
-  if (ADMIN_IDS.includes(String(user.id)) && /^\\/mission_(pause|resume|delete)\\s+/.test(text)) {
-    const match = text.match(/^\\/mission_(pause|resume|delete)\\s+([0-9a-f-]{36})$/i);
-    if (!match) return say(message.chat.id, "Usage: /mission_pause UUID, /mission_resume UUID, or /mission_delete UUID");
-    const action = match[1];
-    const id = match[2];
+  if (ADMIN_IDS.includes(String(user.id)) && (text.startsWith("/mission_pause ") || text.startsWith("/mission_resume ") || text.startsWith("/mission_delete "))) {
+    const [command, id] = text.split(/\\s+/);
+    const action = command.replace("/mission_", "");
+    if (!id || !/^[0-9a-f-]{36}$/i.test(id)) return say(message.chat.id, "Usage: /mission_pause UUID, /mission_resume UUID, or /mission_delete UUID");
     if (action === "delete") {
       const { error } = await db.from("bot_missions").delete().eq("id", id);
       if (error) return say(message.chat.id, "Delete failed: " + escapeHtml(error.message));
