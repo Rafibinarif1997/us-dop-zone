@@ -148,6 +148,55 @@ async function handleMessage(message: TgMessage) {
 
   if (text === "/help") return say(message.chat.id, "Use /start to open the menu. Choose Available Missions, complete a task, then submit your proof.");
   if (text === "/missions") return showMissions(message.chat.id);
+  if (ADMIN_IDS.includes(String(user.id)) && text === "/admin_help") {
+    return say(message.chat.id,
+      "🛠 <b>Admin Commands</b>\\n\\n" +
+      "/mission_list — list missions\\n" +
+      "/mission_add Title | Description | Category | Points | URL\\n" +
+      "/mission_pause UUID — pause mission\\n" +
+      "/mission_resume UUID — activate mission\\n" +
+      "/mission_delete UUID — permanently delete mission\\n" +
+      "/admin_pending — review submissions\\n" +
+      "/approve UUID — approve and credit points\\n\\n" +
+      "Use | between fields. Use - if no URL.");
+  }
+  if (ADMIN_IDS.includes(String(user.id)) && text === "/mission_list") {
+    const { data, error } = await db.from("bot_missions")
+      .select("id,title,status,reward_points").order("created_at", { ascending: false }).limit(30);
+    if (error) return say(message.chat.id, "Could not load missions: " + escapeHtml(error.message));
+    if (!data?.length) return say(message.chat.id, "No missions found.");
+    for (const m of data) await say(message.chat.id,
+      `🚀 <b>${escapeHtml(m.title)}</b>\\nStatus: ${m.status} · ⭐ ${m.reward_points}\\n<code>${m.id}</code>`);
+    return;
+  }
+  if (ADMIN_IDS.includes(String(user.id)) && text.startsWith("/mission_add ")) {
+    const parts = text.slice(12).split("|").map((v) => v.trim());
+    if (parts.length !== 5 || !parts[0] || !parts[1] || !parts[2] || !/^\\d+$/.test(parts[3])) {
+      return say(message.chat.id, "Format:\\n/mission_add Title | Description | Category | Points | URL\\nUse - for no URL.");
+    }
+    const { data, error } = await db.from("bot_missions").insert({
+      title: parts[0].slice(0,120), description: parts[1].slice(0,1000),
+      category: parts[2].slice(0,40), reward_points: Number(parts[3]),
+      action_url: parts[4] === "-" ? null : parts[4], status: "active"
+    }).select("id").single();
+    if (error) return say(message.chat.id, "Could not create mission: " + escapeHtml(error.message));
+    return say(message.chat.id, "✅ Mission created. ID: <code>" + data.id + "</code>");
+  }
+  if (ADMIN_IDS.includes(String(user.id)) && /^\\/mission_(pause|resume|delete)\\s+/.test(text)) {
+    const match = text.match(/^\\/mission_(pause|resume|delete)\\s+([0-9a-f-]{36})$/i);
+    if (!match) return say(message.chat.id, "Usage: /mission_pause UUID, /mission_resume UUID, or /mission_delete UUID");
+    const action = match[1];
+    const id = match[2];
+    if (action === "delete") {
+      const { error } = await db.from("bot_missions").delete().eq("id", id);
+      if (error) return say(message.chat.id, "Delete failed: " + escapeHtml(error.message));
+      return say(message.chat.id, "🗑 Mission deleted.");
+    }
+    const status = action === "pause" ? "paused" : "active";
+    const { error } = await db.from("bot_missions").update({ status }).eq("id", id);
+    if (error) return say(message.chat.id, "Update failed: " + escapeHtml(error.message));
+    return say(message.chat.id, action === "pause" ? "⏸ Mission paused." : "✅ Mission activated.");
+  }
   if (text === "/admin_pending" && ADMIN_IDS.includes(String(user.id))) {
     const { data } = await db.from("bot_submissions").select("id,telegram_id,mission_id,proof,created_at")
       .eq("status", "pending").order("created_at").limit(10);
