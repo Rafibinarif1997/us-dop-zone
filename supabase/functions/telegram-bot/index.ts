@@ -99,18 +99,35 @@ async function showHome(chatId: number, user: TgUser) {
     ]);
 }
 
-async function showMissions(chatId: number) {
-  const { data, error } = await db.from("bot_missions")
-    .select("id,title,description,category,reward_points,action_url,ends_at")
-    .eq("status", "active").order("created_at", { ascending: false }).limit(10);
+const MISSION_CATEGORIES = ["Airdrop", "Telegram", "X (Twitter)", "Discord", "On-chain", "Testnet", "Community", "Other"];
+
+async function showMissionCategories(chatId: number) {
+  const { data, error } = await db.from("bot_missions").select("category").eq("status", "active");
   if (error) throw error;
-  if (!data?.length) return say(chatId, "📭 No active missions right now. Please check again later.");
+  const counts = new Map<string, number>();
+  for (const row of data ?? []) counts.set(row.category, (counts.get(row.category) ?? 0) + 1);
+  const categories = [...new Set([...MISSION_CATEGORIES, ...counts.keys()])].filter((x) => counts.has(x));
+  if (!categories.length) return say(chatId, "📭 No active missions right now. Please check again later.");
+  const keyboard = categories.map((name) => [{ text: `📂 ${name} (${counts.get(name)})`, callback_data: `category:${encodeURIComponent(name)}` }]);
+  keyboard.push([{ text: "📋 All Missions", callback_data: "category:all" }]);
+  return say(chatId, "📂 <b>Choose a Mission Category</b>", keyboard);
+}
+
+async function showMissions(chatId: number, category?: string) {
+  let query = db.from("bot_missions")
+    .select("id,title,description,category,reward_points,action_url,ends_at")
+    .eq("status", "active").order("created_at", { ascending: false }).limit(20);
+  if (category && category !== "all") query = query.eq("category", category);
+  const { data, error } = await query;
+  if (error) throw error;
+  if (!data?.length) return say(chatId, "📭 No active missions in this category.");
+  await say(chatId, `📂 <b>${category && category !== "all" ? escapeHtml(category) : "All"} Missions</b>`, [[{ text: "⬅️ Categories", callback_data: "missions" }]]);
   for (const m of data) {
-    const text = `🚀 <b>${escapeHtml(m.title)}</b>\n🏷 ${escapeHtml(m.category)} · ⭐ ${m.reward_points} points\n\n${escapeHtml(m.description || "Complete this mission and submit proof.")}${m.ends_at ? `\n\n⏳ Ends: ${new Date(m.ends_at).toLocaleString("en-US", { timeZone: "UTC" })} UTC` : ""}`;
+    const messageText = `🚀 <b>${escapeHtml(m.title)}</b>\n🏷 ${escapeHtml(m.category)} · ⭐ ${m.reward_points} points\n\n${escapeHtml(m.description || "Complete this mission and submit proof.")}${m.ends_at ? `\n\n⏳ Ends: ${new Date(m.ends_at).toLocaleString("en-US", { timeZone: "UTC" })} UTC` : ""}`;
     const rows = [];
     if (m.action_url) rows.push([{ text: "🔗 Open Mission", url: m.action_url }]);
     rows.push([{ text: "📤 Submit Proof", callback_data: `submit:${m.id}` }]);
-    await say(chatId, text, rows);
+    await say(chatId, messageText, rows);
   }
 }
 
@@ -152,13 +169,13 @@ async function handleMessage(message: TgMessage) {
     return say(message.chat.id,
       "🛠 <b>Admin Commands</b>\\n\\n" +
       "/mission_list — list missions\\n" +
-      "/mission_add Title | Description | Category | Points | URL\\n" +
+      "/mission_add Title | Description | Category | Points | URL\nCategories: Airdrop, Telegram, X (Twitter), Discord, On-chain, Testnet, Community, Other\\n" +
       "/mission_pause UUID — pause mission\\n" +
       "/mission_resume UUID — activate mission\\n" +
       "/mission_delete UUID — permanently delete mission\\n" +
       "/admin_pending — review submissions\\n" +
       "/approve UUID — approve and credit points\\n\\n" +
-      "Use | between fields. Use - if no URL.");
+      "Use | between fields. Category must be one of the listed categories. Use - if no URL.");
   }
   if (ADMIN_IDS.includes(String(user.id)) && text === "/mission_list") {
     const { data, error } = await db.from("bot_missions")
@@ -222,7 +239,7 @@ async function handleCallback(callback: TgCallback) {
   const data = callback.data ?? "";
   await telegram("answerCallbackQuery", { callback_query_id: callback.id });
 
-  if (data === "missions") return showMissions(chatId);
+  if (data === "missions") return showMissionCategories(chatId);\n  if (data.startsWith("category:")) return showMissions(chatId, decodeURIComponent(data.slice(9)));
   if (data === "profile") {
     const { data: p } = await db.from("telegram_users").select("points,created_at,referral_code")
       .eq("telegram_id", userId).single();
