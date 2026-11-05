@@ -80,10 +80,6 @@ async function upsertUser(user: TgUser, startArg?: string) {
   const { data, error } = await db.from("telegram_users").insert(row).select().single();
   if (error) throw error;
 
-  if (referrer) {
-    await db.from("telegram_users").update({ points: db.rpc ? undefined : undefined })
-      .eq("telegram_id", referrer); // Referral points are credited by the approval/admin workflow.
-  }
   return data;
 }
 
@@ -162,25 +158,11 @@ async function handleMessage(message: TgMessage) {
   }
   if (text.startsWith("/approve ") && ADMIN_IDS.includes(String(user.id))) {
     const id = text.split(/\s+/)[1];
-    const { data: submission, error: readError } = await db.from("bot_submissions")
-      .select("id,telegram_id,mission_id,status").eq("id", id).maybeSingle();
-    if (readError || !submission || submission.status !== "pending") return say(message.chat.id, "Submission not found or already reviewed.");
-    const { data: mission } = await db.from("bot_missions").select("title,reward_points").eq("id", submission.mission_id).single();
-    const { error } = await db.from("bot_submissions").update({ status: "approved", reviewed_at: new Date().toISOString() })
-      .eq("id", id).eq("status", "pending");
-    if (error) throw error;
-    await db.from("telegram_users").update({ points: undefined }).eq("telegram_id", submission.telegram_id);
-    const { data: current } = await db.from("telegram_users").select("points").eq("telegram_id", submission.telegram_id).single();
-    await db.from("telegram_users").update({ points: (current?.points ?? 0) + (mission?.reward_points ?? 0) })
-      .eq("telegram_id", submission.telegram_id);
-    await db.from("bot_point_ledger").insert({
-      telegram_id: submission.telegram_id,
-      points: mission?.reward_points ?? 0,
-      reason: `Mission approved: ${mission?.title ?? "Mission"}`,
-      reference_id: submission.id,
-    });
-    await say(message.chat.id, "✅ Submission approved and points credited.");
-    await say(submission.telegram_id, `🎉 Your mission was approved! You earned ${mission?.reward_points ?? 0} points.`);
+    if (!id) return say(message.chat.id, "Usage: /approve <submission_uuid>");
+    const { data, error } = await db.rpc("admin_approve_bot_submission", { p_submission_id: id });
+    if (error) return say(message.chat.id, "Could not approve: " + escapeHtml(error.message));
+    await say(message.chat.id, "✅ Submission approved. " + data.reward_points + " points credited.");
+    await say(Number(data.telegram_id), "🎉 Your mission was approved! You earned " + data.reward_points + " points. Total: " + data.total_points + " points.");
     return;
   }
 }
