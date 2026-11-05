@@ -70,3 +70,21 @@ drop policy if exists "deny direct bot ledger access" on public.bot_point_ledger
 
 -- No anon/authenticated policies are intentionally created.
 -- Add missions from SQL Editor initially; admin UI can be added in the next phase.
+
+
+-- Atomic admin approval: locks the submission and credits points exactly once.
+create or replace function public.admin_approve_bot_submission(p_submission_id uuid)
+returns jsonb language plpgsql security definer set search_path = public as $$
+declare s public.bot_submissions%rowtype; m public.bot_missions%rowtype; new_points bigint;
+begin
+  select * into s from public.bot_submissions where id = p_submission_id for update;
+  if s.id is null then raise exception 'Submission not found'; end if;
+  if s.status <> 'pending' then raise exception 'Submission already reviewed'; end if;
+  select * into m from public.bot_missions where id = s.mission_id;
+  update public.bot_submissions set status='approved', reviewed_at=now() where id=s.id;
+  update public.telegram_users set points=points+m.reward_points, updated_at=now() where telegram_id=s.telegram_id returning points into new_points;
+  insert into public.bot_point_ledger(telegram_id,points,reason,reference_id) values(s.telegram_id,m.reward_points,'Mission approved: '||m.title,s.id);
+  return jsonb_build_object('telegram_id',s.telegram_id,'mission_title',m.title,'reward_points',m.reward_points,'total_points',new_points);
+end; $$;
+revoke all on function public.admin_approve_bot_submission(uuid) from public, anon, authenticated;
+grant execute on function public.admin_approve_bot_submission(uuid) to service_role;
